@@ -61,7 +61,15 @@ jobs:
           if [ -z "$ref" ]; then
             # Not releases/latest: every core release is published as a prerelease,
             # and that endpoint skips prereleases entirely.
-            ref=$(curl -fsSL 'https://api.github.com/repos/usersaynoso/cactus-foundation/releases?per_page=1' | jq -r '.[0].tag_name')
+            # Authenticated deliberately. Anonymous API calls share a per-IP budget
+            # with every other runner, and a rollout that triggers thirty-odd gates
+            # at once exhausts it - a 403 here reads as a broken gate when nothing
+            # is wrong with the module at all.
+            ref=$(curl -fsSL \
+              -H "Authorization: Bearer ${{ github.token }}" \
+              -H 'Accept: application/vnd.github+json' \
+              'https://api.github.com/repos/usersaynoso/cactus-foundation/releases?per_page=1' \
+              | jq -r '.[0].tag_name')
           fi
           if [ -z "$ref" ] || [ "$ref" = 'null' ]; then
             echo "Could not resolve a core release to build against." >&2
