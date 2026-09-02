@@ -152,3 +152,42 @@ jobs:
       - name: Build
         working-directory: core
         run: npm run build
+
+      # A build proves the module COMPILES against core. It proves nothing about
+      # whether its SQL parses: a raw query is a string to tsc and to eslint, and
+      # a build never executes one. uk-bookkeeping v0.2.29 shipped a subquery
+      # aliased `both` - a reserved word in Postgres - past a green typecheck, a
+      # green eslint, 4870 green tests and a green run of this very gate, and the
+      # entries list on a live site could not be read at all.
+      #
+      # The tests that WOULD have caught it exist. They were gated on SSH access
+      # to the OVH server, so they skipped silently everywhere else, including
+      # here. There is a perfectly good throwaway Postgres sitting beside this
+      # job already, so they run against that instead: CACTUS_TEST_DATABASE_URL
+      # picks the direct backend in core's lib/backup/test-database.ts, and the
+      # suites are none the wiser about which server they got.
+      #
+      # Generic on purpose - no module is named. A module with no *.live.test.ts
+      # skips the step and says so, and any module that adds one is covered from
+      # then on without this file changing.
+      - name: Run the module's live tests, if it has any
+        working-directory: core
+        env:
+          # The superuser and the `postgres` database, not the build's own
+          # cactus_gate: these suites CREATE and DROP databases of their own, and
+          # a connection cannot drop the database it is connected to.
+          CACTUS_TEST_DATABASE_URL: postgresql://postgres:cactus@localhost:5432/postgres
+          RUN_LEDGER_GUARDS: '1'
+        run: |
+          name='${{ steps.module.outputs.name }}'
+          mapfile -t suites < <(find "modules/$name" -name '*.live.test.ts' | sort)
+          if [ ${#suites[@]} -eq 0 ]; then
+            echo "No live tests in $name - nothing to run against the database."
+            exit 0
+          fi
+          echo "Running ${#suites[@]} live suite(s) against the gate's Postgres:"
+          printf '  %s\n' "${suites[@]}"
+          # Generous timeout. These provision a database and apply every migration
+          # before the first assertion, and the 5s vitest default fails them on
+          # setup alone.
+          npx vitest run "${suites[@]}" --testTimeout 120000
