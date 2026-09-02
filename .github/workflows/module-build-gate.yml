@@ -190,4 +190,10 @@ jobs:
           # Generous timeout. These provision a database and apply every migration
           # before the first assertion, and the 5s vitest default fails them on
           # setup alone.
-          npx vitest run "${suites[@]}" --testTimeout 120000
+          #
+          # One file at a time, and that is not a speed choice. Each suite sweeps
+          # up every leftover cactus_rt_* database and role before it starts,
+          # which is how a crashed run stops littering a shared server - and
+          # which, run in parallel, means each suite cheerfully drops the
+          # databases the other five are in the middle of using.
+          npx vitest run "${suites[@]}" --testTimeout 120000 --no-file-parallelism
